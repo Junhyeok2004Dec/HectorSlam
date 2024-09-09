@@ -1,4 +1,4 @@
-//=================================================================================================
+ //=================================================================================================
 // Copyright (c) 2011, Stefan Kohlbrecher, TU Darmstadt
 // All rights reserved.
 
@@ -54,19 +54,19 @@ HectorMappingRos::HectorMappingRos()
 {
   ros::NodeHandle private_nh_("~");
 
-  std::string mapTopic_ = "map";
+  std::string mapTopic_ = "map1s";
 
   private_nh_.param("pub_drawings", p_pub_drawings, false);
   private_nh_.param("pub_debug_output", p_pub_debug_output_, false);
   private_nh_.param("pub_map_odom_transform", p_pub_map_odom_transform_,true);
-  private_nh_.param("pub_odometry", p_pub_odometry_,false);
+  private_nh_.param("pub_odometry", p_pub_odometry_,true); // false -> true
   private_nh_.param("advertise_map_service", p_advertise_map_service_,true);
   private_nh_.param("scan_subscriber_queue_size", p_scan_subscriber_queue_size_, 5);
 
-  private_nh_.param("map_resolution", p_map_resolution_, 0.025);
-  private_nh_.param("map_size", p_map_size_, 1024);
-  private_nh_.param("map_start_x", p_map_start_x_, 0.5);
-  private_nh_.param("map_start_y", p_map_start_y_, 0.5);
+  private_nh_.param("map_resolution", p_map_resolution_, 0.025);  
+  private_nh_.param("map_size", p_map_size_, 1024); 
+  private_nh_.param("map_start_x", p_map_start_x_, 0.0);
+  private_nh_.param("map_start_y", p_map_start_y_, 0.0); 
   private_nh_.param("map_multi_res_levels", p_map_multi_res_levels_, 3);
 
   private_nh_.param("update_factor_free", p_update_factor_free_, 0.4);
@@ -124,6 +124,10 @@ HectorMappingRos::HectorMappingRos()
     odometryPublisher_ = node_.advertise<nav_msgs::Odometry>("scanmatch_odom", 50);
   }
 
+
+// 해당 slamProcesor로부터 Slamposition이 갱신되고 있는지 확인해야 한다.
+
+
   slamProcessor = new hectorslam::HectorSlamProcessor(static_cast<float>(p_map_resolution_), p_map_size_, p_map_size_, Eigen::Vector2f(p_map_start_x_, p_map_start_y_), p_map_multi_res_levels_, hectorDrawings, debugInfoProvider);
   slamProcessor->setUpdateFactorFree(p_update_factor_free_);
   slamProcessor->setUpdateFactorOccupied(p_update_factor_occupied_);
@@ -159,7 +163,7 @@ HectorMappingRos::HectorMappingRos()
 
     setServiceGetMapData(tmp.map_, slamProcessor->getGridMap(i));
 
-    if ( i== 0){
+    if (i==0){
       mapPubContainer[i].mapMetadataPublisher_.publish(mapPubContainer[i].map_.map.info);
     }
   }
@@ -187,9 +191,11 @@ HectorMappingRos::HectorMappingRos()
   scanSubscriber_ = node_.subscribe(p_scan_topic_, p_scan_subscriber_queue_size_, &HectorMappingRos::scanCallback, this);
   sysMsgSubscriber_ = node_.subscribe(p_sys_msg_topic_, 2, &HectorMappingRos::sysMsgCallback, this);
 
-  poseUpdatePublisher_ = node_.advertise<geometry_msgs::PoseWithCovarianceStamped>(p_pose_update_topic_, 1, false);
-  posePublisher_ = node_.advertise<geometry_msgs::PoseStamped>("slam_out_pose", 1, false);
 
+  // Hector slam에서 posePublish을 담당하는 부분
+  poseUpdatePublisher_ = node_.advertise<geometry_msgs::PoseWithCovarianceStamped>(p_pose_update_topic_, 1, false);
+  posePublisher_ = node_.advertise<geometry_msgs::PoseStamped>("slam_out_pose", 1, false); // <- 초반에 갱신이 되지 않고 있음 
+  
   scan_point_cloud_publisher_ = node_.advertise<sensor_msgs::PointCloud>("slam_cloud",1,false);
 
   tfB_ = new tf::TransformBroadcaster();
@@ -231,154 +237,102 @@ HectorMappingRos::~HectorMappingRos()
   if(map__publish_thread_)
     delete map__publish_thread_;
 }
-
 void HectorMappingRos::scanCallback(const sensor_msgs::LaserScan& scan)
 {
-  if (pause_scan_processing_)
-  {
-    return;
-  }
-
-  if (hectorDrawings)
-  {
-    hectorDrawings->setTime(scan.header.stamp);
-  }
-
-  ros::WallTime start_time = ros::WallTime::now();
-  if (!p_use_tf_scan_transformation_)
-  {
-    // If we are not using the tf tree to find the transform between the base frame and laser frame,
-    // then just convert the laser scan to our data container and process the update based on our last
-    // pose estimate
-    this->rosLaserScanToDataContainer(scan, laserScanContainer, slamProcessor->getScaleToMap());
-    slamProcessor->update(laserScanContainer, slamProcessor->getLastScanMatchPose());
-  }
-  else
-  {
-    // If we are using the tf tree to find the transform between the base frame and laser frame,
-    // let's get that transform
-    const ros::Duration dur(0.5);
-    tf::StampedTransform laser_transform;
-    if (tf_.waitForTransform(p_base_frame_, scan.header.frame_id, scan.header.stamp, dur))
+    if (pause_scan_processing_)
     {
-      tf_.lookupTransform(p_base_frame_, scan.header.frame_id, scan.header.stamp, laser_transform);
+        ROS_INFO("pause_scan_processing");
+        return;
+    }
+
+    if (hectorDrawings)
+    {
+        hectorDrawings->setTime(scan.header.stamp);
+    }
+
+    ros::WallTime start_time = ros::WallTime::now();
+
+    // 스캔 데이터를 처리하고 SLAM 프로세서를 업데이트합니다.
+    if (!p_use_tf_scan_transformation_)
+    {
+        // tf 변환을 사용하지 않을 경우
+        this->rosLaserScanToDataContainer(scan, laserScanContainer, slamProcessor->getScaleToMap());
+        slamProcessor->update(laserScanContainer, slamProcessor->getLastScanMatchPose());
     }
     else
     {
-      ROS_INFO("lookupTransform %s to %s timed out. Could not transform laser scan into base_frame.", p_base_frame_.c_str(), scan.header.frame_id.c_str());
-      return;
+        // tf 변환을 사용할 경우
+        tf::StampedTransform laser_transform;
+        try
+        {
+            tf_.waitForTransform(p_base_frame_, scan.header.frame_id, scan.header.stamp, ros::Duration(0.5));
+            tf_.lookupTransform(p_base_frame_, scan.header.frame_id, scan.header.stamp, laser_transform);
+        }
+        catch (tf::TransformException& ex)
+        {
+            ROS_ERROR("Transform error: %s", ex.what());
+            return;
+        }
+
+        // 레이저 스캔을 포인트 클라우드로 변환
+        projector_.projectLaser(scan, laser_point_cloud_, 30.0);
+
+        // 포인트 클라우드를 데이터 컨테이너로 변환
+        this->rosPointCloudToDataContainer(laser_point_cloud_, laser_transform, laserScanContainer, slamProcessor->getScaleToMap());
+
+        // SLAM 프로세서의 초기 위치 추정 설정
+        // initilization
+        Eigen::Vector3f start_estimate(Eigen::Vector3f::Zero());
+        if (initial_pose_set_)
+        {
+            initial_pose_set_ = false;
+            start_estimate = initial_pose_;
+        }
+        else if (p_use_tf_pose_start_estimate_)
+        {
+            try
+            {
+                tf::StampedTransform stamped_pose;
+                tf_.waitForTransform(p_map_frame_, p_base_frame_, scan.header.stamp, ros::Duration(0.5));
+                tf_.lookupTransform(p_map_frame_, p_base_frame_, scan.header.stamp, stamped_pose);
+
+                const double yaw = tf::getYaw(stamped_pose.getRotation());
+                start_estimate = Eigen::Vector3f(stamped_pose.getOrigin().getX(), stamped_pose.getOrigin().getY(), yaw);
+            }
+            catch (tf::TransformException& e)
+            {
+                ROS_ERROR("Transform from %s to %s failed: %s", p_map_frame_.c_str(), p_base_frame_.c_str(), e.what());
+                start_estimate = slamProcessor->getLastScanMatchPose();
+            }
+        }
+        else
+        {
+            start_estimate = slamProcessor->getLastScanMatchPose();
+        }
+
+        // SLAM 프로세서 업데이트
+        slamProcessor->update(laserScanContainer, start_estimate);
     }
 
-    // Convert the laser scan to point cloud
-    projector_.projectLaser(scan, laser_point_cloud_, 30.0);
+    // **SLAM 위치 정보 업데이트**
+    poseInfoContainer_.update(slamProcessor->getLastScanMatchPose(),
+                              slamProcessor->getLastScanMatchCovariance(),
+                              scan.header.stamp,
+                              p_map_frame_);
 
-    // Publish the point cloud if there are any subscribers
-    if (scan_point_cloud_publisher_.getNumSubscribers() > 0)
-    {
-      scan_point_cloud_publisher_.publish(laser_point_cloud_);
-    }
+    
+    // publish robot's position from slam
+    poseUpdatePublisher_.publish(poseInfoContainer_.getPoseWithCovarianceStamped());
+    posePublisher_.publish(poseInfoContainer_.getPoseStamped());
 
-    // Convert the point cloud to our data container
-    this->rosPointCloudToDataContainer(laser_point_cloud_, laser_transform, laserScanContainer, slamProcessor->getScaleToMap());
-
-    // Now let's choose the initial pose estimate for our slam process update
-    Eigen::Vector3f start_estimate(Eigen::Vector3f::Zero());
-    if (initial_pose_set_)
-    {
-      // User has requested a pose reset
-      initial_pose_set_ = false;
-      start_estimate = initial_pose_;
-    }
-    else if (p_use_tf_pose_start_estimate_)
-    {
-      // Initial pose estimate comes from the tf tree
-      try
-      {
-        tf::StampedTransform stamped_pose;
-
-        tf_.waitForTransform(p_map_frame_, p_base_frame_, scan.header.stamp, ros::Duration(0.5));
-        tf_.lookupTransform(p_map_frame_, p_base_frame_,  scan.header.stamp, stamped_pose);
-
-        const double yaw = tf::getYaw(stamped_pose.getRotation());
-        start_estimate = Eigen::Vector3f(stamped_pose.getOrigin().getX(), stamped_pose.getOrigin().getY(), yaw);
-      }
-      catch(tf::TransformException e)
-      {
-        ROS_ERROR("Transform from %s to %s failed\n", p_map_frame_.c_str(), p_base_frame_.c_str());
-        start_estimate = slamProcessor->getLastScanMatchPose();
-      }
-    }
-    else
-    {
-      // If none of the above, the initial pose is simply the last estimated pose
-      start_estimate = slamProcessor->getLastScanMatchPose();
-    }
-
-    // If "p_map_with_known_poses_" is enabled, we assume that start_estimate is precise and doesn't need to be refined
-    if (p_map_with_known_poses_)
-    {
-      slamProcessor->update(laserScanContainer, start_estimate, true);
-    }
-    else
-    {
-      slamProcessor->update(laserScanContainer, start_estimate);
-    }
-  }
-
-  // If the debug flag "p_timing_output_" is enabled, print how long this last iteration took
-  if (p_timing_output_)
-  {
-    ros::WallDuration duration = ros::WallTime::now() - start_time;
-    ROS_INFO("HectorSLAM Iter took: %f milliseconds", duration.toSec()*1000.0f );
-  }
-
-  // If we're just building a map with known poses, we're finished now. Code below this point publishes the localization results.
-  if (p_map_with_known_poses_)
-  {
-    return;
-  }
-
-  poseInfoContainer_.update(slamProcessor->getLastScanMatchPose(), slamProcessor->getLastScanMatchCovariance(), scan.header.stamp, p_map_frame_);
-
-  // Publish pose with and without covariances
-  poseUpdatePublisher_.publish(poseInfoContainer_.getPoseWithCovarianceStamped());
-  posePublisher_.publish(poseInfoContainer_.getPoseStamped());
-
-  // Publish odometry if enabled
-  if(p_pub_odometry_)
-  {
-    nav_msgs::Odometry tmp;
-    tmp.pose = poseInfoContainer_.getPoseWithCovarianceStamped().pose;
-
-    tmp.header = poseInfoContainer_.getPoseWithCovarianceStamped().header;
-    tmp.child_frame_id = p_base_frame_;
-    odometryPublisher_.publish(tmp);
-  }
-
-  // Publish the map->odom transform if enabled
-  if (p_pub_map_odom_transform_)
-  {
-    tf::StampedTransform odom_to_base;
-    try
-    {
-      tf_.waitForTransform(p_odom_frame_, p_base_frame_, scan.header.stamp, ros::Duration(0.5));
-      tf_.lookupTransform(p_odom_frame_, p_base_frame_, scan.header.stamp, odom_to_base);
-    }
-    catch(tf::TransformException e)
-    {
-      ROS_ERROR("Transform failed during publishing of map_odom transform: %s",e.what());
-      odom_to_base.setIdentity();
-    }
-    map_to_odom_ = tf::Transform(poseInfoContainer_.getTfTransform() * odom_to_base.inverse());
-    tfB_->sendTransform( tf::StampedTransform (map_to_odom_, scan.header.stamp, p_map_frame_, p_odom_frame_));
-  }
-
-  // Publish the transform from map to estimated pose (if enabled)
-  if (p_pub_map_scanmatch_transform_)
-  {
-    tfB_->sendTransform( tf::StampedTransform(poseInfoContainer_.getTfTransform(), scan.header.stamp, p_map_frame_, p_tf_map_scanmatch_transform_frame_name_));
-  }
+    
+    // Update 된 output
+    ROS_INFO("Updated pose: x=%f, y=%f, yaw=%f",
+             poseInfoContainer_.getPoseStamped().pose.position.x,
+             poseInfoContainer_.getPoseStamped().pose.position.y,
+             tf::getYaw(poseInfoContainer_.getPoseStamped().pose.orientation));
 }
+
 
 void HectorMappingRos::sysMsgCallback(const std_msgs::String& string)
 {
@@ -543,6 +497,9 @@ void HectorMappingRos::rosPointCloudToDataContainer(const sensor_msgs::PointClou
 
 void HectorMappingRos::setServiceGetMapData(nav_msgs::GetMap::Response& map_, const hectorslam::GridMap& gridMap)
 {
+
+
+  ROS_INFO("[DEBUG] SetServiceGetMapData");
   Eigen::Vector2f mapOrigin (gridMap.getWorldCoords(Eigen::Vector2f::Zero()));
   mapOrigin.array() -= gridMap.getCellLength()*0.5f;
 
@@ -601,6 +558,8 @@ void HectorMappingRos::staticMapCallback(const nav_msgs::OccupancyGrid& map)
 
 void HectorMappingRos::initialPoseCallback(const geometry_msgs::PoseWithCovarianceStampedConstPtr& msg)
 {
+
+  ROS_INFO("[Debug] InitialPoseCallback");
   this->resetPose(msg->pose.pose);
 }
 

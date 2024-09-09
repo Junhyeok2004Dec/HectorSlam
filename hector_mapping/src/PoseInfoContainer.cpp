@@ -30,14 +30,19 @@
 
 void PoseInfoContainer::update(const Eigen::Vector3f& slamPose, const Eigen::Matrix3f& slamCov, const ros::Time& stamp, const std::string& frame_id)
 {
+  // slam표시
   //Fill stampedPose
   std_msgs::Header& header = stampedPose_.header;
   header.stamp = stamp;
   header.frame_id = frame_id;
 
-  geometry_msgs::Pose& pose = stampedPose_.pose;
+  geometry_msgs::Pose& pose = stampedPose_.pose; //-> pose.position.x/y/z가 제대로 갱신되지 않음.
+  ROS_INFO("pose = %f, %f, %f", pose.position.x, pose.position.y, pose.position.z);
+
+
   pose.position.x = slamPose.x();
   pose.position.y = slamPose.y();
+
 
   pose.orientation.w = cos(slamPose.z()*0.5f);
   pose.orientation.z = sin(slamPose.z()*0.5f);
