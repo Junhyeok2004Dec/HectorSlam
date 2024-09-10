@@ -37,7 +37,7 @@ void PoseInfoContainer::update(const Eigen::Vector3f& slamPose, const Eigen::Mat
   header.frame_id = frame_id;
 
   geometry_msgs::Pose& pose = stampedPose_.pose; //-> pose.position.x/y/z가 제대로 갱신되지 않음.
-  ROS_INFO("pose = %f, %f, %f", pose.position.x, pose.position.y, pose.position.z);
+  //ROS_INFO("pose = %f, %f, %f", pose.position.x, pose.position.y, pose.position.z);
 
 
   pose.position.x = slamPose.x();
