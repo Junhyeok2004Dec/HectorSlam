@@ -26,6 +26,9 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //=================================================================================================https://github.com/Junhyeok2004Dec/HectorSlam.git
 
+#include <fstream>
+#include <vector>
+
 #include "HectorMappingRos.h"
 
 #include "map/GridMap.h"
@@ -43,18 +46,76 @@
   typedef btScalar tfScalar;
 #endif
 
+
+#define ORIGIN_RANGE 3.5 // 원점으로 인식되는 거리 : 3.5m 이내 진입 시
+
+
+
+int lap = 0; // 바퀴수
+
+
+std::vector<std::string> csvData; // waypoint 데이타
+float distance_from_Origin; // 초기 지점과의 거리 -> used loop closure
+bool isCenter = true; 
+bool changelap = true;
+//Save2CSV
+// string
+void saveToCsv(const std::string& filePath, const std::string data) {
+    std::fstream outFile(filePath, std::ios::app);
+
+    if (!outFile.is_open()) {
+        std::cerr << "Error: Unable to open file " << filePath << std::endl;
+        return;
+    }
+
+    outFile << data;
+    outFile << std::endl; // EOL
+
+    outFile.close();
+  
+}
+// array
+void saveToCsv(const std::string& filePath, const std::vector<std::string>& data) {
+    std::fstream outFile(filePath, std::ios::app);
+    
+    if (!outFile.is_open()) {
+        std::cerr << "Error: Unable to open file " << filePath << std::endl;
+        return;
+    }
+
+
+    for (size_t i = 0; i < data.size(); ++i) {
+        outFile << data[i];
+        if (i != data.size() - 1) { 
+            outFile << ",";
+        }
+    }
+    outFile << std::endl; // EOL
+
+    
+    outFile.close();
+}
+
 HectorMappingRos::HectorMappingRos()
   : debugInfoProvider(0)
   , hectorDrawings(0)
   , lastGetMapUpdateIndex(-100)
   , tfB_(0)
   , map__publish_thread_(0)
-  , initial_pose_set_(false)
+  , initial_pose_set_(true)
   , pause_scan_processing_(false)
 {
   ros::NodeHandle private_nh_("~");
 
-  std::string mapTopic_ = "map1s";
+
+
+  //std::string mapTopic_ = "map1s";// -> 다중 map을 이용하도록 할 것.
+
+  std::string mapList[] = {"map1s", "map2s", "map3s", "map4s", "map5s", "map6s",
+   "map7s", "map8s", "map9s", "map10s", "map11s"};
+
+   std::string mapTopic_ = mapList[0]; // map1s load
+  
 
   private_nh_.param("pub_drawings", p_pub_drawings, false);
   private_nh_.param("pub_debug_output", p_pub_debug_output_, false);
@@ -326,11 +387,54 @@ void HectorMappingRos::scanCallback(const sensor_msgs::LaserScan& scan)
     posePublisher_.publish(poseInfoContainer_.getPoseStamped());
 
     
+    csvData.push_back(std::to_string(poseInfoContainer_.getPoseStamped().pose.position.x));
+    csvData.push_back(std::to_string(poseInfoContainer_.getPoseStamped().pose.position.y));
+    csvData.push_back(std::to_string(tf::getYaw(poseInfoContainer_.getPoseStamped().pose.orientation)));
+
     // Update 된 output
     ROS_INFO("Updated pose: x=%f, y=%f, yaw=%f",
              poseInfoContainer_.getPoseStamped().pose.position.x,
              poseInfoContainer_.getPoseStamped().pose.position.y,
              tf::getYaw(poseInfoContainer_.getPoseStamped().pose.orientation));
+  
+    saveToCsv("/home/ak47/waypoints/test.csv", csvData);
+
+    csvData.erase(csvData.begin() + 0);
+    csvData.erase(csvData.begin() + 1);
+    csvData.erase(csvData.begin() + 2); // data 초기화
+
+
+
+  //loop closure
+  distance_from_Origin = sqrt(
+    pow(poseInfoContainer_.getPoseStamped().pose.position.x,2) + pow(poseInfoContainer_.getPoseStamped().pose.position.y,2)
+     );
+    
+    
+  if (distance_from_Origin > ORIGIN_RANGE)  isCenter = false; 
+  else isCenter = true;
+
+
+
+
+  if(isCenter) {
+    changelap = true; 
+  } 
+  
+  if(!isCenter && (changelap && ( distance_from_Origin > ORIGIN_RANGE + 1.5))) {
+
+    lap++;
+    changelap = false;
+  
+  }
+
+ 
+  ROS_INFO("isCenter : %d",isCenter);
+  ROS_INFO("changelap : %d",changelap);
+
+  ROS_INFO("lap : %d", lap);
+
+
 }
 
 

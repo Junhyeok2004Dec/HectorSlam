@@ -61,6 +61,8 @@ public:
 
     this->setMapUpdateMinDistDiff(0.4f *1.0f);
     this->setMapUpdateMinAngleDiff(0.13f * 1.0f);
+
+    
   }
 
   ~HectorSlamProcessor()
