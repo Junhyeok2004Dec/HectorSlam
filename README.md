@@ -1,4 +1,6 @@
 # HectorSlam
+**Not Official, something will broken!**
+(made by Beginner / Undergraudated)
 
 Use only Study / Performancing
 
