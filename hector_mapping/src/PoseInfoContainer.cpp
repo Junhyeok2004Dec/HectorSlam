@@ -26,50 +26,51 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //=================================================================================================
 
+
 #include "PoseInfoContainer.h"
+
 
 void PoseInfoContainer::update(const Eigen::Vector3f& slamPose, const Eigen::Matrix3f& slamCov, const ros::Time& stamp, const std::string& frame_id)
 {
-  // slam표시
-  //Fill stampedPose
-  std_msgs::Header& header = stampedPose_.header;
-  header.stamp = stamp;
-  header.frame_id = frame_id;
+    // Fill stampedPose
+     std_msgs::Header& header = stampedPose_.header;
+    header.stamp = stamp;
+    header.frame_id = frame_id;
 
-  geometry_msgs::Pose& pose = stampedPose_.pose; //-> pose.position.x/y/z가 제대로 갱신되지 않음.
-  //ROS_INFO("pose = %f, %f, %f", pose.position.x, pose.position.y, pose.position.z);
+    geometry_msgs::Pose& pose = stampedPose_.pose;
+    
+    pose.position.x = slamPose.x();
+    pose.position.y = slamPose.y();
+    pose.position.z = 0.0f; // Set z to 0 as it's not used in the original code
+
+    pose.orientation.w = cos(slamPose.z() * 0.5f);
+    pose.orientation.z = sin(slamPose.z() * 0.5f);
 
 
-  pose.position.x = slamPose.x();
-  pose.position.y = slamPose.y();
+    
 
+    // Fill covPose
+    covPose_.header = header;
+    covPose_.pose.pose = pose;
 
-  pose.orientation.w = cos(slamPose.z()*0.5f);
-  pose.orientation.z = sin(slamPose.z()*0.5f);
+    boost::array<double, 36>& cov(covPose_.pose.covariance);
 
-  //Fill covPose
-  //geometry_msgs::PoseWithCovarianceStamped covPose;
-  covPose_.header = header;
-  covPose_.pose.pose = pose;
+    cov[0] = static_cast<double>(slamCov(0,0));
+    cov[7] = static_cast<double>(slamCov(1,1));
+    cov[35] = static_cast<double>(slamCov(2,2));
 
-  boost::array<double, 36>& cov(covPose_.pose.covariance);
+    double xyC = static_cast<double>(slamCov(0,1));
+    cov[1] = xyC;
+    cov[6] = xyC;
 
-  cov[0] = static_cast<double>(slamCov(0,0));
-  cov[7] = static_cast<double>(slamCov(1,1));
-  cov[35] = static_cast<double>(slamCov(2,2));
+    double xaC = static_cast<double>(slamCov(0,2));
+    cov[5] = xaC;
+    cov[30] = xaC;
 
-  double xyC = static_cast<double>(slamCov(0,1));
-  cov[1] = xyC;
-  cov[6] = xyC;
+    double yaC = static_cast<double>(slamCov(1,2));
+    cov[11] = yaC;
+    cov[31] = yaC;
 
-  double xaC = static_cast<double>(slamCov(0,2));
-  cov[5] = xaC;
-  cov[30] = xaC;
-
-  double yaC = static_cast<double>(slamCov(1,2));
-  cov[11] = yaC;
-  cov[31] = yaC;
-
-  //Fill tf tansform
-  tf::poseMsgToTF(pose, poseTransform_);
+    // Fill tf transform
+    tf::poseMsgToTF(pose, poseTransform_);
 }
