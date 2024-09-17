@@ -47,17 +47,20 @@
 #endif
 
 
-#define ORIGIN_RANGE 3.5 // 원점으로 인식되는 거리 : 3.5m 이내 진입 시
+#define ORIGIN_RANGE 2.0 // 원점으로 인식되는 거리 : 2.0m 이내 진입 시
 
 
 
 int lap = 0; // 바퀴수
 
+std::string mapList[] = {"map1s", "map2s", "map3s", "map4s", "map5s", "map6s",
+   "map7s", "map8s", "map9s", "map10s", "map11s"}; 
+std::string mapTopic_;
 
 std::vector<std::string> csvData; // waypoint 데이타
 float distance_from_Origin; // 초기 지점과의 거리 -> used loop closure
-bool isCenter = true; 
-bool changelap = true;
+bool isCenter = false; 
+bool changelap = false;
 //Save2CSV
 // string
 void saveToCsv(const std::string& filePath, const std::string data) {
@@ -107,14 +110,15 @@ HectorMappingRos::HectorMappingRos()
 {
   ros::NodeHandle private_nh_("~");
 
+  lapPublisher = private_nh_.advertise<std_msgs::String>("/lap", 10);
+
 
 
   //std::string mapTopic_ = "map1s";// -> 다중 map을 이용하도록 할 것.
 
-  std::string mapList[] = {"map1s", "map2s", "map3s", "map4s", "map5s", "map6s",
-   "map7s", "map8s", "map9s", "map10s", "map11s"};
-
-   std::string mapTopic_ = mapList[0]; // map1s load
+  //for(int i = 0; i < 11; i++) mapTopic_ = mapList[i];
+  //
+  mapTopic_ = "map1s";
   
 
   private_nh_.param("pub_drawings", p_pub_drawings, false);
@@ -196,7 +200,7 @@ HectorMappingRos::HectorMappingRos()
   slamProcessor->setMapUpdateMinAngleDiff(p_map_update_angle_threshold_);
 
   int mapLevels = slamProcessor->getMapLevels();
-  mapLevels = 1;
+  //mapLevels = 2;
 
   for (int i = 0; i < mapLevels; ++i)
   {
@@ -225,8 +229,11 @@ HectorMappingRos::HectorMappingRos()
     setServiceGetMapData(tmp.map_, slamProcessor->getGridMap(i));
 
     if (i==0){
-      mapPubContainer[i].mapMetadataPublisher_.publish(mapPubContainer[i].map_.map.info);
+    mapPubContainer[i].mapMetadataPublisher_.publish(mapPubContainer[i].map_.map.info);
     }
+
+    
+
   }
 
   // Initialize services
@@ -255,7 +262,7 @@ HectorMappingRos::HectorMappingRos()
 
   // Hector slam에서 posePublish을 담당하는 부분
   poseUpdatePublisher_ = node_.advertise<geometry_msgs::PoseWithCovarianceStamped>(p_pose_update_topic_, 1, false);
-  posePublisher_ = node_.advertise<geometry_msgs::PoseStamped>("slam_out_pose", 1, false); // <- 초반에 갱신이 되지 않고 있음 
+  posePublisher_ = node_.advertise<geometry_msgs::PoseStamped>("slam_out_pose", 1, false); 
   
   scan_point_cloud_publisher_ = node_.advertise<sensor_msgs::PointCloud>("slam_cloud",1,false);
 
@@ -280,6 +287,7 @@ HectorMappingRos::HectorMappingRos()
   map_to_odom_.setIdentity();
 
   lastMapPublishTime = ros::Time(0,0);
+  
 }
 
 HectorMappingRos::~HectorMappingRos()
@@ -392,11 +400,12 @@ void HectorMappingRos::scanCallback(const sensor_msgs::LaserScan& scan)
     csvData.push_back(std::to_string(tf::getYaw(poseInfoContainer_.getPoseStamped().pose.orientation)));
 
     // Update 된 output
+    /*
     ROS_INFO("Updated pose: x=%f, y=%f, yaw=%f",
              poseInfoContainer_.getPoseStamped().pose.position.x,
              poseInfoContainer_.getPoseStamped().pose.position.y,
              tf::getYaw(poseInfoContainer_.getPoseStamped().pose.orientation));
-  
+  */
     saveToCsv("/home/ak47/waypoints/test.csv", csvData);
 
     csvData.erase(csvData.begin() + 0);
@@ -414,27 +423,29 @@ void HectorMappingRos::scanCallback(const sensor_msgs::LaserScan& scan)
   if (distance_from_Origin > ORIGIN_RANGE)  isCenter = false; 
   else isCenter = true;
 
-
-
-
   if(isCenter) {
-    changelap = true; 
-  } 
+    changelap = true;   
+  }
   
-  if(!isCenter && (changelap && ( distance_from_Origin > ORIGIN_RANGE + 1.5))) {
-
-    lap++;
-    changelap = false;
   
+  if(!isCenter && (changelap && ( distance_from_Origin > ORIGIN_RANGE + 1))) {
+    // 중심에서 벗어난 뒤 바로 실행할 경우, 경계면에서 문제 발생 -ㅣ> 경계면에서 벗어난 이후에 add lap
+    
+     
+      lap++;
+      changelap = false;
+    
   }
 
  
-  ROS_INFO("isCenter : %d",isCenter);
-  ROS_INFO("changelap : %d",changelap);
+  //ROS_INFO("isCenter : %d",isCenter);
+  //ROS_INFO("changelap : %d",changelap);
 
-  ROS_INFO("lap : %d", lap);
+  //ROS_INFO("lap : %d", lap);
 
-
+  std_msgs::String lapData;
+  lapData.data = std::to_string(lap);
+  lapPublisher.publish(lapData);
 }
 
 
