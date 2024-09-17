@@ -103,6 +103,12 @@ public:
   void toggleMappingPause(bool pause);
   void resetPose(const geometry_msgs::Pose &pose);
 
+
+// for lap change, mapping function - junhyeok
+  void changeLapAndResetMap();
+  void saveCurrentMap(const std::string& map_file_name);
+  void resetSlamProcessor();
+  void loadPreviousMap(const std::string& map_file_name);
   /*
   void setStaticMapData(const nav_msgs::OccupancyGrid& map);
   */

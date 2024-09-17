@@ -79,6 +79,7 @@ void saveToCsv(const std::string& filePath, const std::string data) {
 }
 // array
 void saveToCsv(const std::string& filePath, const std::vector<std::string>& data) {
+    sleep(0.1);
     std::fstream outFile(filePath, std::ios::app);
     
     if (!outFile.is_open()) {
@@ -305,147 +306,6 @@ HectorMappingRos::~HectorMappingRos()
 
   if(map__publish_thread_)
     delete map__publish_thread_;
-}
-void HectorMappingRos::scanCallback(const sensor_msgs::LaserScan& scan)
-{
-    if (pause_scan_processing_)
-    {
-        ROS_INFO("pause_scan_processing");
-        return;
-    }
-
-    if (hectorDrawings)
-    {
-        hectorDrawings->setTime(scan.header.stamp);
-    }
-
-    ros::WallTime start_time = ros::WallTime::now();
-
-    // 스캔 데이터를 처리하고 SLAM 프로세서를 업데이트합니다.
-    if (!p_use_tf_scan_transformation_)
-    {
-        // tf 변환을 사용하지 않을 경우
-        this->rosLaserScanToDataContainer(scan, laserScanContainer, slamProcessor->getScaleToMap());
-        slamProcessor->update(laserScanContainer, slamProcessor->getLastScanMatchPose());
-    }
-    else
-    {
-        // tf 변환을 사용할 경우
-        tf::StampedTransform laser_transform;
-        try
-        {
-            tf_.waitForTransform(p_base_frame_, scan.header.frame_id, scan.header.stamp, ros::Duration(0.5));
-            tf_.lookupTransform(p_base_frame_, scan.header.frame_id, scan.header.stamp, laser_transform);
-        }
-        catch (tf::TransformException& ex)
-        {
-            ROS_ERROR("Transform error: %s", ex.what());
-            return;
-        }
-
-        // 레이저 스캔을 포인트 클라우드로 변환
-        projector_.projectLaser(scan, laser_point_cloud_, 30.0);
-
-        // 포인트 클라우드를 데이터 컨테이너로 변환
-        this->rosPointCloudToDataContainer(laser_point_cloud_, laser_transform, laserScanContainer, slamProcessor->getScaleToMap());
-
-        // SLAM 프로세서의 초기 위치 추정 설정
-        // initilization
-        Eigen::Vector3f start_estimate(Eigen::Vector3f::Zero());
-        if (initial_pose_set_)
-        {
-            initial_pose_set_ = false;
-            start_estimate = initial_pose_;
-        }
-        else if (p_use_tf_pose_start_estimate_)
-        {
-            try
-            {
-                tf::StampedTransform stamped_pose;
-                tf_.waitForTransform(p_map_frame_, p_base_frame_, scan.header.stamp, ros::Duration(0.5));
-                tf_.lookupTransform(p_map_frame_, p_base_frame_, scan.header.stamp, stamped_pose);
-
-                const double yaw = tf::getYaw(stamped_pose.getRotation());
-                start_estimate = Eigen::Vector3f(stamped_pose.getOrigin().getX(), stamped_pose.getOrigin().getY(), yaw);
-            }
-            catch (tf::TransformException& e)
-            {
-                ROS_ERROR("Transform from %s to %s failed: %s", p_map_frame_.c_str(), p_base_frame_.c_str(), e.what());
-                start_estimate = slamProcessor->getLastScanMatchPose();
-            }
-        }
-        else
-        {
-            start_estimate = slamProcessor->getLastScanMatchPose();
-        }
-
-        // SLAM 프로세서 업데이트
-        slamProcessor->update(laserScanContainer, start_estimate);
-    }
-
-    // **SLAM 위치 정보 업데이트**
-    poseInfoContainer_.update(slamProcessor->getLastScanMatchPose(),
-                              slamProcessor->getLastScanMatchCovariance(),
-                              scan.header.stamp,
-                              p_map_frame_);
-
-    
-    // publish robot's position from slam
-    poseUpdatePublisher_.publish(poseInfoContainer_.getPoseWithCovarianceStamped());
-    posePublisher_.publish(poseInfoContainer_.getPoseStamped());
-
-    
-    csvData.push_back(std::to_string(poseInfoContainer_.getPoseStamped().pose.position.x));
-    csvData.push_back(std::to_string(poseInfoContainer_.getPoseStamped().pose.position.y));
-    csvData.push_back(std::to_string(tf::getYaw(poseInfoContainer_.getPoseStamped().pose.orientation)));
-
-    // Update 된 output
-    /*
-    ROS_INFO("Updated pose: x=%f, y=%f, yaw=%f",
-             poseInfoContainer_.getPoseStamped().pose.position.x,
-             poseInfoContainer_.getPoseStamped().pose.position.y,
-             tf::getYaw(poseInfoContainer_.getPoseStamped().pose.orientation));
-  */
-    saveToCsv("/home/ak47/waypoints/test.csv", csvData);
-
-    csvData.erase(csvData.begin() + 0);
-    csvData.erase(csvData.begin() + 1);
-    csvData.erase(csvData.begin() + 2); // data 초기화
-
-
-
-  //loop closure
-  distance_from_Origin = sqrt(
-    pow(poseInfoContainer_.getPoseStamped().pose.position.x,2) + pow(poseInfoContainer_.getPoseStamped().pose.position.y,2)
-     );
-    
-    
-  if (distance_from_Origin > ORIGIN_RANGE)  isCenter = false; 
-  else isCenter = true;
-
-  if(isCenter) {
-    changelap = true;   
-  }
-  
-  
-  if(!isCenter && (changelap && ( distance_from_Origin > ORIGIN_RANGE + 1))) {
-    // 중심에서 벗어난 뒤 바로 실행할 경우, 경계면에서 문제 발생 -ㅣ> 경계면에서 벗어난 이후에 add lap
-    
-     
-      lap++;
-      changelap = false;
-    
-  }
-
- 
-  //ROS_INFO("isCenter : %d",isCenter);
-  //ROS_INFO("changelap : %d",changelap);
-
-  //ROS_INFO("lap : %d", lap);
-
-  std_msgs::String lapData;
-  lapData.data = std::to_string(lap);
-  lapPublisher.publish(lapData);
 }
 
 
@@ -698,4 +558,192 @@ void HectorMappingRos::resetPose(const geometry_msgs::Pose &pose)
   initial_pose_ = Eigen::Vector3f(pose.position.x, pose.position.y, util::getYawFromQuat(pose.orientation));
   ROS_INFO("[HectorSM]: Setting initial pose with world coords x: %f y: %f yaw: %f",
            initial_pose_[0], initial_pose_[1], initial_pose_[2]);
+}
+
+void HectorMappingRos::changeLapAndResetMap() {
+    // lap을 증가시키고 새로운 lap에 대한 작업 수행
+    lap++;
+
+
+    // 현재까지의 맵을 저장
+    std::string map_file_name = "/home/ak47/maps/map" + std::to_string(lap - 1) + "";
+    saveCurrentMap(map_file_name);
+
+    // Hector SLAM의 맵을 초기화하고, 새로운 lap을 시작
+    resetSlamProcessor();
+
+    // 이전 lap에서 저장한 맵을 불러와서 SLAM 프로세서에 로드
+    std::string load_map_file = "/home/ak47/maps/map" + std::to_string(lap - 1) + "";
+    loadPreviousMap(load_map_file);
+}
+
+void HectorMappingRos::saveCurrentMap(const std::string& map_file_name) {
+    // 현재 맵을 저장하기 위한 로직을 구현합니다.
+    // map_server를 사용하여 맵을 파일로 저장할 수 있습니다.
+    ROS_INFO("Saving current map to %s", map_file_name.c_str());
+
+    // 예시 코드: map_server를 호출하여 맵 저장
+    system(("rosrun map_server map_saver -f " + map_file_name).c_str());
+}
+
+void HectorMappingRos::resetSlamProcessor() {
+    // Hector SLAM 프로세서를 리셋하여 새로운 SLAM을 시작할 수 있도록 합니다.
+    ROS_INFO("Resetting SLAM processor for new lap.");
+    // 이 함수는 slamProcessor 객체를 리셋하는 로직을 포함해야 합니다.
+    slamProcessor->reset();
+}
+
+void HectorMappingRos::loadPreviousMap(const std::string& map_file_name) {
+    // 이전 lap에서 저장한 맵을 로드하여 SLAM 프로세서에 적용합니다.
+    ROS_INFO("Loading previous map from %s", map_file_name.c_str());
+
+    // 예시 코드: map_server를 사용하여 맵을 로드
+    // 이 부분은 map_server와 상호작용하여 맵을 불러오는 로직을 구현합니다.
+    system(("rosrun map_server map_server " + map_file_name).c_str());
+
+    // 맵을 SLAM 프로세서에 적용하는 로직을 구현해야 합니다.
+    // ...
+}
+
+
+void HectorMappingRos::scanCallback(const sensor_msgs::LaserScan& scan)
+{
+    if (pause_scan_processing_)
+    {
+        ROS_INFO("pause_scan_processing");
+        return;
+    }
+
+    if (hectorDrawings)
+    {
+        hectorDrawings->setTime(scan.header.stamp);
+    }
+
+    ros::WallTime start_time = ros::WallTime::now();
+
+    // 스캔 데이터를 처리하고 SLAM 프로세서를 업데이트합니다.
+    if (!p_use_tf_scan_transformation_)
+    {
+        // tf 변환을 사용하지 않을 경우
+        this->rosLaserScanToDataContainer(scan, laserScanContainer, slamProcessor->getScaleToMap());
+        slamProcessor->update(laserScanContainer, slamProcessor->getLastScanMatchPose());
+    }
+    else
+    {
+        // tf 변환을 사용할 경우
+        tf::StampedTransform laser_transform;
+        try
+        {
+            tf_.waitForTransform(p_base_frame_, scan.header.frame_id, scan.header.stamp, ros::Duration(0.5));
+            tf_.lookupTransform(p_base_frame_, scan.header.frame_id, scan.header.stamp, laser_transform);
+        }
+        catch (tf::TransformException& ex)
+        {
+            ROS_ERROR("Transform error: %s", ex.what());
+            return;
+        }
+
+        // 레이저 스캔을 포인트 클라우드로 변환
+        projector_.projectLaser(scan, laser_point_cloud_, 30.0);
+
+        // 포인트 클라우드를 데이터 컨테이너로 변환
+        this->rosPointCloudToDataContainer(laser_point_cloud_, laser_transform, laserScanContainer, slamProcessor->getScaleToMap());
+
+        // SLAM 프로세서의 초기 위치 추정 설정
+        // initilization
+        Eigen::Vector3f start_estimate(Eigen::Vector3f::Zero());
+        if (initial_pose_set_)
+        {
+            initial_pose_set_ = false;
+            start_estimate = initial_pose_;
+        }
+        else if (p_use_tf_pose_start_estimate_)
+        {
+            try
+            {
+                tf::StampedTransform stamped_pose;
+                tf_.waitForTransform(p_map_frame_, p_base_frame_, scan.header.stamp, ros::Duration(0.5));
+                tf_.lookupTransform(p_map_frame_, p_base_frame_, scan.header.stamp, stamped_pose);
+
+                const double yaw = tf::getYaw(stamped_pose.getRotation());
+                start_estimate = Eigen::Vector3f(stamped_pose.getOrigin().getX(), stamped_pose.getOrigin().getY(), yaw);
+            }
+            catch (tf::TransformException& e)
+            {
+                ROS_ERROR("Transform from %s to %s failed: %s", p_map_frame_.c_str(), p_base_frame_.c_str(), e.what());
+                start_estimate = slamProcessor->getLastScanMatchPose();
+            }
+        }
+        else
+        {
+            start_estimate = slamProcessor->getLastScanMatchPose();
+        }
+
+        // SLAM 프로세서 업데이트
+        slamProcessor->update(laserScanContainer, start_estimate);
+    }
+
+    // **SLAM 위치 정보 업데이트**
+    poseInfoContainer_.update(slamProcessor->getLastScanMatchPose(),
+                              slamProcessor->getLastScanMatchCovariance(),
+                              scan.header.stamp,
+                              p_map_frame_);
+
+    
+    // publish robot's position from slam
+    poseUpdatePublisher_.publish(poseInfoContainer_.getPoseWithCovarianceStamped());
+    posePublisher_.publish(poseInfoContainer_.getPoseStamped());
+
+    
+    csvData.push_back(std::to_string(poseInfoContainer_.getPoseStamped().pose.position.x));
+    csvData.push_back(std::to_string(poseInfoContainer_.getPoseStamped().pose.position.y));
+    csvData.push_back(std::to_string(tf::getYaw(poseInfoContainer_.getPoseStamped().pose.orientation)));
+
+    // Update 된 output
+    /*
+    ROS_INFO("Updated pose: x=%f, y=%f, yaw=%f",
+             poseInfoContainer_.getPoseStamped().pose.position.x,
+             poseInfoContainer_.getPoseStamped().pose.position.y,
+             tf::getYaw(poseInfoContainer_.getPoseStamped().pose.orientation));
+  */
+    saveToCsv("/home/ak47/waypoints/test.csv", csvData);
+
+    csvData.erase(csvData.begin() + 0);
+    csvData.erase(csvData.begin() + 1);
+    csvData.erase(csvData.begin() + 2); // data 초기화
+
+
+
+  //loop closure
+  distance_from_Origin = sqrt(
+    pow(poseInfoContainer_.getPoseStamped().pose.position.x,2) + pow(poseInfoContainer_.getPoseStamped().pose.position.y,2)
+     );
+    
+    
+  if (distance_from_Origin > ORIGIN_RANGE)  isCenter = false; 
+  else isCenter = true;
+
+  if(isCenter) {
+    changelap = true;   
+  }
+  
+  
+  if(!isCenter && (changelap && ( distance_from_Origin > ORIGIN_RANGE + 1))) {
+    // 중심에서 벗어난 뒤 바로 실행할 경우, 경계면에서 문제 발생 -ㅣ> 경계면에서 벗어난 이후에 add lap
+    
+     
+      changelap = false;
+      changeLapAndResetMap();
+    
+  }
+
+ 
+  //ROS_INFO("isCenter : %d",isCenter);
+  //ROS_INFO("changelap : %d",changelap);
+
+  //ROS_INFO("lap : %d", lap);
+
+  std_msgs::String lapData;
+  lapData.data = std::to_string(lap);
+  lapPublisher.publish(lapData);
 }
