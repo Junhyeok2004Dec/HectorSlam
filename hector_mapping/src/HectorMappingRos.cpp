@@ -47,7 +47,7 @@
 #endif
 
 
-#define ORIGIN_RANGE 3.5 // 원점으로 인식되는 거리 : 3.5m 이내 진입 시
+#define ORIGIN_RANGE 2.0 // 원점으로 인식되는 거리 : 2.0m 이내 진입 시
 
 
 
@@ -59,8 +59,8 @@ std::string mapTopic_;
 
 std::vector<std::string> csvData; // waypoint 데이타
 float distance_from_Origin; // 초기 지점과의 거리 -> used loop closure
-bool isCenter = true; 
-bool changelap = true;
+bool isCenter = false; 
+bool changelap = false;
 //Save2CSV
 // string
 void saveToCsv(const std::string& filePath, const std::string data) {
@@ -400,11 +400,12 @@ void HectorMappingRos::scanCallback(const sensor_msgs::LaserScan& scan)
     csvData.push_back(std::to_string(tf::getYaw(poseInfoContainer_.getPoseStamped().pose.orientation)));
 
     // Update 된 output
+    /*
     ROS_INFO("Updated pose: x=%f, y=%f, yaw=%f",
              poseInfoContainer_.getPoseStamped().pose.position.x,
              poseInfoContainer_.getPoseStamped().pose.position.y,
              tf::getYaw(poseInfoContainer_.getPoseStamped().pose.orientation));
-  
+  */
     saveToCsv("/home/ak47/waypoints/test.csv", csvData);
 
     csvData.erase(csvData.begin() + 0);
@@ -422,23 +423,18 @@ void HectorMappingRos::scanCallback(const sensor_msgs::LaserScan& scan)
   if (distance_from_Origin > ORIGIN_RANGE)  isCenter = false; 
   else isCenter = true;
 
-
-
-
   if(isCenter) {
-    changelap = true; 
-  } 
+    changelap = true;   
+  }
   
-  if(!isCenter && (changelap && ( distance_from_Origin > ORIGIN_RANGE + 1.5))) {
-
-    lap++;
-    changelap = false;
-
-
+  
+  if(!isCenter && (changelap && ( distance_from_Origin > ORIGIN_RANGE + 1))) {
+    // 중심에서 벗어난 뒤 바로 실행할 경우, 경계면에서 문제 발생 -ㅣ> 경계면에서 벗어난 이후에 add lap
     
-
+     
+      lap++;
+      changelap = false;
     
-
   }
 
  
