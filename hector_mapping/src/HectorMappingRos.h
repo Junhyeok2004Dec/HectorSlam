@@ -62,6 +62,8 @@ class HectorDebugInfoProvider;
 class MapPublisherContainer
 {
 public:
+
+
   ros::Publisher mapPublisher_;
   ros::Publisher mapMetadataPublisher_;
   nav_msgs::GetMap::Response map_;
@@ -112,6 +114,7 @@ protected:
   int lastGetMapUpdateIndex;
 
   ros::NodeHandle node_;
+  ros::Publisher lapPublisher; // 몇 번쨰 lap인지 확인하기 위함
 
   ros::Subscriber scanSubscriber_;
   ros::Subscriber sysMsgSubscriber_;
@@ -119,6 +122,7 @@ protected:
   ros::Subscriber mapSubscriber_;
   message_filters::Subscriber<geometry_msgs::PoseWithCovarianceStamped>* initial_pose_sub_;
   tf::MessageFilter<geometry_msgs::PoseWithCovarianceStamped>* initial_pose_filter_;
+
 
   ros::Publisher posePublisher_;
   ros::Publisher poseUpdatePublisher_;
@@ -173,6 +177,7 @@ protected:
 
   std::string p_pose_update_topic_;
   std::string p_twist_update_topic_;
+
 
   bool p_pub_drawings;
   bool p_pub_debug_output_;
