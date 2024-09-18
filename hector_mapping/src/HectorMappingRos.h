@@ -112,6 +112,7 @@ public:
   /*
   void setStaticMapData(const nav_msgs::OccupancyGrid& map);
   */
+
 protected:
 
   HectorDebugInfoProvider* debugInfoProvider;
@@ -121,7 +122,8 @@ protected:
 
   ros::NodeHandle node_;
   ros::Publisher lapPublisher; // 몇 번쨰 lap인지 확인하기 위함
-
+  ros::Publisher marker_pub; // waypoint 가시화 하기 위함
+  
   ros::Subscriber scanSubscriber_;
   ros::Subscriber sysMsgSubscriber_;
 
@@ -214,6 +216,10 @@ protected:
   float p_sqr_laser_max_dist_;
   float p_laser_z_min_value_;
   float p_laser_z_max_value_;
+
+private:
+
+
 };
 
 #endif
