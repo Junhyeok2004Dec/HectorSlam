@@ -161,8 +161,8 @@ HectorMappingRos::HectorMappingRos()
   private_nh_.param("map_with_known_poses", p_map_with_known_poses_, false);
 
   private_nh_.param("base_frame", p_base_frame_, std::string("base_link"));
-  private_nh_.param("map_frame", p_map_frame_, std::string("map"));
-  private_nh_.param("odom_frame", p_odom_frame_, std::string("odom"));
+  private_nh_.param("map_frame", p_map_frame_, std::string("laser"));
+  private_nh_.param("odom_frame", p_odom_frame_, std::string("base_link"));
 
   private_nh_.param("pub_map_scanmatch_transform", p_pub_map_scanmatch_transform_,true);
   private_nh_.param("tf_map_scanmatch_transform_frame_name", p_tf_map_scanmatch_transform_frame_name_, std::string("scanmatcher_frame"));
@@ -739,7 +739,7 @@ void HectorMappingRos::scanCallback(const sensor_msgs::LaserScan& scan)
   if(lap < 2) {
     saveToCsv("/home/ak47/waypoints/test.csv", csvData);
     
-    point.header.frame_id = "map";
+    point.header.frame_id = "laser";
     point.header.stamp = ros::Time::now();
 
     point.type = visualization_msgs::Marker::SPHERE;
