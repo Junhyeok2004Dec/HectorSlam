@@ -46,14 +46,15 @@
 #include "laser_geometry/laser_geometry.h"
 #include "nav_msgs/GetMap.h"
 
-#include "slam_main/HectorSlamProcessor.h"
+#include "../include/hector_slam_lib/slam_main/HectorSlamProcessor.h"
 
-#include "scan/DataPointContainer.h"
-#include "util/MapLockerInterface.h"
+#include "../include/hector_slam_lib/scan/DataPointContainer.h"
+#include "../include/hector_slam_lib/util/MapLockerInterface.h"
 
 #include <boost/thread.hpp>
 
 #include "PoseInfoContainer.h"
+
 
 
 class HectorDrawings;
@@ -70,11 +71,26 @@ public:
   ros::ServiceServer dynamicMapServiceServer_;
 };
 
+class WaypointPub {
+
+  public:
+    std::vector<std::array<double, 2>> getData() {
+        return waypoints;
+};
+
+  private: 
+  std::vector<std::array<double, 2>> waypoints;
+};
+
 class HectorMappingRos
 {
 public:
+
   HectorMappingRos();
   ~HectorMappingRos();
+
+
+
 
 
   void scanCallback(const sensor_msgs::LaserScan& scan);
@@ -112,6 +128,8 @@ public:
   /*
   void setStaticMapData(const nav_msgs::OccupancyGrid& map);
   */
+
+
 protected:
 
   HectorDebugInfoProvider* debugInfoProvider;
@@ -121,7 +139,8 @@ protected:
 
   ros::NodeHandle node_;
   ros::Publisher lapPublisher; // 몇 번쨰 lap인지 확인하기 위함
-
+  ros::Publisher marker_pub; // waypoint 가시화 하기 위함
+  
   ros::Subscriber scanSubscriber_;
   ros::Subscriber sysMsgSubscriber_;
 
@@ -214,6 +233,12 @@ protected:
   float p_sqr_laser_max_dist_;
   float p_laser_z_min_value_;
   float p_laser_z_max_value_;
+
+
+
+private:
+
+
 };
 
 #endif

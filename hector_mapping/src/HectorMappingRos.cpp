@@ -28,6 +28,7 @@
 
 #include <fstream>
 #include <vector>
+#include <thread>
 
 #include "HectorMappingRos.h"
 
@@ -41,6 +42,8 @@
 #include "HectorDrawings.h"
 #include "HectorDebugInfoProvider.h"
 #include "HectorMapMutex.h"
+
+#include "std_msgs/Float64.h"
 
 #ifndef TF_SCALAR_H
   typedef btScalar tfScalar;
@@ -57,12 +60,22 @@ std::string mapList[] = {"map1s", "map2s", "map3s", "map4s", "map5s", "map6s",
    "map7s", "map8s", "map9s", "map10s", "map11s"}; 
 std::string mapTopic_;
 
+
 std::vector<std::string> csvData; // waypoint 데이타
+
 float distance_from_Origin; // 초기 지점과의 거리 -> used loop closure
 bool isCenter = false; 
 bool changelap = false;
+bool isFirst = true;
+
+int waypointCount = 0; // waypoint count
 //Save2CSV
 // string
+//std::vector<std::array<double, 2>> waypoints;
+
+
+
+
 void saveToCsv(const std::string& filePath, const std::string data) {
     std::fstream outFile(filePath, std::ios::app);
 
@@ -79,7 +92,7 @@ void saveToCsv(const std::string& filePath, const std::string data) {
 }
 // array
 void saveToCsv(const std::string& filePath, const std::vector<std::string>& data) {
-    sleep(0.1);
+    ros::Duration(0.2).sleep();
     std::fstream outFile(filePath, std::ios::app);
     
     if (!outFile.is_open()) {
@@ -109,9 +122,15 @@ HectorMappingRos::HectorMappingRos()
   , initial_pose_set_(true)
   , pause_scan_processing_(false)
 {
+
+  
   ros::NodeHandle private_nh_("~");
 
   lapPublisher = private_nh_.advertise<std_msgs::String>("/lap", 10);
+  marker_pub = private_nh_.advertise<visualization_msgs::MarkerArray>("/waypoint", 10);
+
+
+  
 
 
 
@@ -150,8 +169,8 @@ HectorMappingRos::HectorMappingRos()
   private_nh_.param("map_with_known_poses", p_map_with_known_poses_, false);
 
   private_nh_.param("base_frame", p_base_frame_, std::string("base_link"));
-  private_nh_.param("map_frame", p_map_frame_, std::string("map"));
-  private_nh_.param("odom_frame", p_odom_frame_, std::string("odom"));
+  private_nh_.param("map_frame", p_map_frame_, std::string("laser"));
+  private_nh_.param("odom_frame", p_odom_frame_, std::string("base_link"));
 
   private_nh_.param("pub_map_scanmatch_transform", p_pub_map_scanmatch_transform_,true);
   private_nh_.param("tf_map_scanmatch_transform_frame_name", p_tf_map_scanmatch_transform_frame_name_, std::string("scanmatcher_frame"));
@@ -563,17 +582,20 @@ void HectorMappingRos::resetPose(const geometry_msgs::Pose &pose)
 void HectorMappingRos::changeLapAndResetMap() {
     // lap을 증가시키고 새로운 lap에 대한 작업 수행
     lap++;
-
-
     // 현재까지의 맵을 저장
-    std::string map_file_name = "/home/ak47/maps/map" + std::to_string(lap - 1) + "";
+
+    
+    std::string map_file_name = "/home/ak47/maps/map" + std::to_string(lap-1) + "";
     saveCurrentMap(map_file_name);
 
     // Hector SLAM의 맵을 초기화하고, 새로운 lap을 시작
+    
     resetSlamProcessor();
 
+
     // 이전 lap에서 저장한 맵을 불러와서 SLAM 프로세서에 로드
-    std::string load_map_file = "/home/ak47/maps/map" + std::to_string(lap - 1) + "";
+    std::string load_map_file = "/home/ak47/maps/map" + std::to_string(lap-1) + ".yaml";
+
     loadPreviousMap(load_map_file);
 }
 
@@ -583,27 +605,29 @@ void HectorMappingRos::saveCurrentMap(const std::string& map_file_name) {
     ROS_INFO("Saving current map to %s", map_file_name.c_str());
 
     // 예시 코드: map_server를 호출하여 맵 저장
-    system(("rosrun map_server map_saver -f " + map_file_name).c_str());
+    system(("rosrun map_server map_saver map:=/map1s -f " + map_file_name).c_str());
 }
 
 void HectorMappingRos::resetSlamProcessor() {
     // Hector SLAM 프로세서를 리셋하여 새로운 SLAM을 시작할 수 있도록 합니다.
     ROS_INFO("Resetting SLAM processor for new lap.");
-    // 이 함수는 slamProcessor 객체를 리셋하는 로직을 포함해야 합니다.
+    
+
+    //reset slam Processor
     slamProcessor->reset();
 }
 
 void HectorMappingRos::loadPreviousMap(const std::string& map_file_name) {
-    // 이전 lap에서 저장한 맵을 로드하여 SLAM 프로세서에 적용합니다.
-    ROS_INFO("Loading previous map from %s", map_file_name.c_str());
+    
+    ROS_INFO("[WIP] Loading previous map from %s", map_file_name.c_str());
+    //system(("rosrun map_server map_server map:=/map1s " + map_file_name).c_str());
 
-    // 예시 코드: map_server를 사용하여 맵을 로드
-    // 이 부분은 map_server와 상호작용하여 맵을 불러오는 로직을 구현합니다.
-    system(("rosrun map_server map_server " + map_file_name).c_str());
 
-    // 맵을 SLAM 프로세서에 적용하는 로직을 구현해야 합니다.
-    // ...
+    // map_server -> 직접 systemd에서 map_server을 진행한다. (LOAD)
+    system(("rosrun map_server map_server map:=/map " + map_file_name +" &").c_str());
+
 }
+
 
 
 void HectorMappingRos::scanCallback(const sensor_msgs::LaserScan& scan)
@@ -682,22 +706,31 @@ void HectorMappingRos::scanCallback(const sensor_msgs::LaserScan& scan)
         // SLAM 프로세서 업데이트
         slamProcessor->update(laserScanContainer, start_estimate);
     }
-
     // **SLAM 위치 정보 업데이트**
     poseInfoContainer_.update(slamProcessor->getLastScanMatchPose(),
                               slamProcessor->getLastScanMatchCovariance(),
                               scan.header.stamp,
                               p_map_frame_);
-
     
     // publish robot's position from slam
     poseUpdatePublisher_.publish(poseInfoContainer_.getPoseWithCovarianceStamped());
     posePublisher_.publish(poseInfoContainer_.getPoseStamped());
-
     
-    csvData.push_back(std::to_string(poseInfoContainer_.getPoseStamped().pose.position.x));
-    csvData.push_back(std::to_string(poseInfoContainer_.getPoseStamped().pose.position.y));
-    csvData.push_back(std::to_string(tf::getYaw(poseInfoContainer_.getPoseStamped().pose.orientation)));
+    double x, y, steering;
+
+    x=poseInfoContainer_.getPoseStamped().pose.position.x;
+    y=poseInfoContainer_.getPoseStamped().pose.position.y;
+    steering = tf::getYaw(poseInfoContainer_.getPoseStamped().pose.orientation);
+    // 초반 initialization이 안 되었을 경우 대비 - rrt 대비
+    if((x+y) > 1000) {
+      x = 0;
+      y = 0;
+      steering = 0;
+    }
+    
+    csvData.push_back(std::to_string(x));
+    csvData.push_back(std::to_string(y));
+    csvData.push_back(std::to_string(steering));
 
     // Update 된 output
     /*
@@ -706,44 +739,77 @@ void HectorMappingRos::scanCallback(const sensor_msgs::LaserScan& scan)
              poseInfoContainer_.getPoseStamped().pose.position.y,
              tf::getYaw(poseInfoContainer_.getPoseStamped().pose.orientation));
   */
-    saveToCsv("/home/ak47/waypoints/test.csv", csvData);
 
+  visualization_msgs::Marker point;
+  visualization_msgs::MarkerArray waypointList;
+
+  if(lap < 2) {
+    //saveToCsv("/home/ak47/waypoints/test.csv", csvData);
+    
+    point.header.frame_id = "map";
+    point.header.stamp = ros::Time::now();
+
+    point.type = visualization_msgs::Marker::SPHERE;
+    point.id = waypointCount;
+    point.action = visualization_msgs::Marker::ADD;
+
+    point.pose.orientation.w = steering;
+    point.pose.position.x = x;
+    point.pose.position.y = y;
+
+    point.color.r = 0.8;
+    point.color.g = 0.1;
+    point.color.b = 0.1;
+    point.color.a = 1.0;
+    
+    point.scale.x = 0.1;
+    point.scale.y = 0.1;
+    point.scale.z = 0.1;
+
+
+    
+    waypointList.markers.push_back(point);
+    marker_pub.publish(waypointList);
+
+    waypointCount++;
+
+    ros::Duration(0.2).sleep();
+    }
+
+
+    //initialization data
     csvData.erase(csvData.begin() + 0);
     csvData.erase(csvData.begin() + 1);
-    csvData.erase(csvData.begin() + 2); // data 초기화
+    csvData.erase(csvData.begin() + 2); 
 
-
-
-  //loop closure
+  //for loop closure -> 거리 확인
   distance_from_Origin = sqrt(
     pow(poseInfoContainer_.getPoseStamped().pose.position.x,2) + pow(poseInfoContainer_.getPoseStamped().pose.position.y,2)
-     );
-    
-    
+     ); 
+
+    // 중심까지의 거리를 확인하여라!
   if (distance_from_Origin > ORIGIN_RANGE)  isCenter = false; 
   else isCenter = true;
 
   if(isCenter) {
     changelap = true;   
   }
-  
-  
+
   if(!isCenter && (changelap && ( distance_from_Origin > ORIGIN_RANGE + 1))) {
     // 중심에서 벗어난 뒤 바로 실행할 경우, 경계면에서 문제 발생 -ㅣ> 경계면에서 벗어난 이후에 add lap
     
-     
       changelap = false;
-      changeLapAndResetMap();
-    
+      if(isFirst) {
+        isFirst = false;
+      }else {changeLapAndResetMap();}      
   }
-
- 
   //ROS_INFO("isCenter : %d",isCenter);
   //ROS_INFO("changelap : %d",changelap);
 
-  //ROS_INFO("lap : %d", lap);
+  ROS_INFO("lap : %d", lap);
 
   std_msgs::String lapData;
   lapData.data = std::to_string(lap);
   lapPublisher.publish(lapData);
 }
+
