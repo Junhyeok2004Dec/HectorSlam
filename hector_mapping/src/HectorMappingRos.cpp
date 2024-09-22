@@ -61,7 +61,7 @@ std::string mapTopic_;
 
 
 std::vector<std::string> csvData; // waypoint 데이타
-std::vector<std::vector<std::string>> waypoints;
+
 float distance_from_Origin; // 초기 지점과의 거리 -> used loop closure
 bool isCenter = false; 
 bool changelap = false;
@@ -69,6 +69,11 @@ bool changelap = false;
 int waypointCount = 0; // waypoint count
 //Save2CSV
 // string
+//std::vector<std::array<double, 2>> waypoints;
+
+
+
+
 void saveToCsv(const std::string& filePath, const std::string data) {
     std::fstream outFile(filePath, std::ios::app);
 
@@ -119,7 +124,6 @@ HectorMappingRos::HectorMappingRos()
 
   lapPublisher = private_nh_.advertise<std_msgs::String>("/lap", 10);
   marker_pub = private_nh_.advertise<visualization_msgs::MarkerArray>("/waypoint", 10);
-
 
 
 
@@ -574,11 +578,6 @@ void HectorMappingRos::resetPose(const geometry_msgs::Pose &pose)
 void HectorMappingRos::changeLapAndResetMap() {
     // lap을 증가시키고 새로운 lap에 대한 작업 수행
     lap++;
-    
-    
-    
-
-
     // 현재까지의 맵을 저장
     std::string map_file_name = "/home/ak47/maps/map" + std::to_string(lap-1) + "";
     saveCurrentMap(map_file_name);
@@ -739,7 +738,7 @@ void HectorMappingRos::scanCallback(const sensor_msgs::LaserScan& scan)
   if(lap < 2) {
     saveToCsv("/home/ak47/waypoints/test.csv", csvData);
     
-    point.header.frame_id = "laser";
+    point.header.frame_id = "map";
     point.header.stamp = ros::Time::now();
 
     point.type = visualization_msgs::Marker::SPHERE;
@@ -801,3 +800,4 @@ void HectorMappingRos::scanCallback(const sensor_msgs::LaserScan& scan)
   lapData.data = std::to_string(lap);
   lapPublisher.publish(lapData);
 }
+
