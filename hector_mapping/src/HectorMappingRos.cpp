@@ -28,6 +28,7 @@
 
 #include <fstream>
 #include <vector>
+#include <thread>
 
 #include "HectorMappingRos.h"
 
@@ -65,6 +66,7 @@ std::vector<std::string> csvData; // waypoint 데이타
 float distance_from_Origin; // 초기 지점과의 거리 -> used loop closure
 bool isCenter = false; 
 bool changelap = false;
+bool isFirst = true;
 
 int waypointCount = 0; // waypoint count
 //Save2CSV
@@ -120,13 +122,15 @@ HectorMappingRos::HectorMappingRos()
   , initial_pose_set_(true)
   , pause_scan_processing_(false)
 {
+
+  
   ros::NodeHandle private_nh_("~");
 
   lapPublisher = private_nh_.advertise<std_msgs::String>("/lap", 10);
   marker_pub = private_nh_.advertise<visualization_msgs::MarkerArray>("/waypoint", 10);
 
 
-
+  
 
 
 
@@ -579,6 +583,8 @@ void HectorMappingRos::changeLapAndResetMap() {
     // lap을 증가시키고 새로운 lap에 대한 작업 수행
     lap++;
     // 현재까지의 맵을 저장
+
+    
     std::string map_file_name = "/home/ak47/maps/map" + std::to_string(lap-1) + "";
     saveCurrentMap(map_file_name);
 
@@ -589,6 +595,7 @@ void HectorMappingRos::changeLapAndResetMap() {
 
     // 이전 lap에서 저장한 맵을 불러와서 SLAM 프로세서에 로드
     std::string load_map_file = "/home/ak47/maps/map" + std::to_string(lap-1) + ".yaml";
+
     loadPreviousMap(load_map_file);
 }
 
@@ -613,13 +620,14 @@ void HectorMappingRos::resetSlamProcessor() {
 void HectorMappingRos::loadPreviousMap(const std::string& map_file_name) {
     
     ROS_INFO("[WIP] Loading previous map from %s", map_file_name.c_str());
-    //system(("rosrun map_server map_server " + map_file_name).c_str());
+    //system(("rosrun map_server map_server map:=/map1s " + map_file_name).c_str());
 
-    
+
     // map_server -> 직접 systemd에서 map_server을 진행한다. (LOAD)
- //   system(("rosrun map_server map_server " + map_file_name).c_str());
+    system(("rosrun map_server map_server map:=/map " + map_file_name +" &").c_str());
 
 }
+
 
 
 void HectorMappingRos::scanCallback(const sensor_msgs::LaserScan& scan)
@@ -736,7 +744,7 @@ void HectorMappingRos::scanCallback(const sensor_msgs::LaserScan& scan)
   visualization_msgs::MarkerArray waypointList;
 
   if(lap < 2) {
-    saveToCsv("/home/ak47/waypoints/test.csv", csvData);
+    //saveToCsv("/home/ak47/waypoints/test.csv", csvData);
     
     point.header.frame_id = "map";
     point.header.stamp = ros::Time::now();
@@ -764,6 +772,8 @@ void HectorMappingRos::scanCallback(const sensor_msgs::LaserScan& scan)
     marker_pub.publish(waypointList);
 
     waypointCount++;
+
+    ros::Duration(0.2).sleep();
     }
 
 
@@ -789,7 +799,9 @@ void HectorMappingRos::scanCallback(const sensor_msgs::LaserScan& scan)
     // 중심에서 벗어난 뒤 바로 실행할 경우, 경계면에서 문제 발생 -ㅣ> 경계면에서 벗어난 이후에 add lap
     
       changelap = false;
-      changeLapAndResetMap();
+      if(isFirst) {
+        isFirst = false;
+      }else {changeLapAndResetMap();}      
   }
   //ROS_INFO("isCenter : %d",isCenter);
   //ROS_INFO("changelap : %d",changelap);
